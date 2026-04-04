@@ -1,0 +1,23 @@
+{
+  "name": "resource-boundary",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "index.ts",
+  "openclaw": {
+    "extensions": ["./index.ts"]
+  },
+  "description": "OpenClaw plugin that enforces per-agent file path boundaries at the tool execution layer",
+  "dependencies": {
+    "picomatch": "^4.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/picomatch": "^3.0.1",
+    "vitest": "^3.1.1",
+    "typescript": "^5.7.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}

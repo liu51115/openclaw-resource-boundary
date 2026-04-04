@@ -1,0 +1,64 @@
+{
+  "id": "resource-boundary",
+  "name": "Resource Boundary",
+  "description": "Enforces per-agent file path boundaries at the tool execution layer using before_tool_call hooks",
+  "version": "0.1.0",
+  "entry": "index.ts",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "defaultMode": {
+        "type": "string",
+        "enum": ["allow", "deny-external"],
+        "default": "allow",
+        "description": "Default mode for agents not listed in agents config"
+      },
+      "alwaysAllowPaths": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Glob patterns always permitted for all agents (e.g. system dirs)"
+      },
+      "agents": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["allow", "deny-external"]
+            },
+            "allowedPaths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns where agent has full access"
+            },
+            "oneReadPaths": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Glob patterns where agent gets one read per directory per window"
+            },
+            "oneReadWindow": {
+              "type": "number",
+              "default": 30,
+              "description": "Seconds before one-read counter resets"
+            },
+            "blockedTools": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Tool names to enforce (lowercase)"
+            },
+            "exemptTools": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Tool names to never block (lowercase)"
+            },
+            "blockMessage": {
+              "type": "string",
+              "description": "Custom message returned to agent when blocked"
+            }
+          }
+        }
+      }
+    }
+  }
+}
