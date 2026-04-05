@@ -3,7 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 
 // Git ref patterns that look like paths but aren't
-const GIT_REF_PREFIXES = ["upstream/", "origin/", "remotes/", "refs/", "HEAD"];
+const GIT_REF_PREFIXES = [
+  "upstream/", "origin/", "remotes/", "refs/", "HEAD",
+  "feature/", "bugfix/", "hotfix/", "release/",
+];
 const GIT_RANGE_RE = /\.\.\./; // ref1..ref2 or ref1...ref2
 
 // Flags whose values are content, not file paths
@@ -21,12 +24,51 @@ function isGitRef(token: string): boolean {
   return false;
 }
 
+// Interpreters whose -c/-e argument is code, not a file path
+const INTERPRETER_CODE_FLAGS: Record<string, Set<string>> = {
+  python3: new Set(["-c"]),
+  python: new Set(["-c"]),
+  python2: new Set(["-c"]),
+  node: new Set(["-e", "--eval"]),
+  ruby: new Set(["-e"]),
+  perl: new Set(["-e"]),
+  bash: new Set(["-c"]),
+  sh: new Set(["-c"]),
+  zsh: new Set(["-c"]),
+};
+
+/**
+ * Strip interpreter code arguments from command before path extraction.
+ * E.g. `python3 -c "import json; open('/foo')"` → `python3 -c ""`
+ * This prevents false positives from paths inside code strings.
+ */
+function stripInterpreterCode(cmd: string): string {
+  // Match the interpreter binary (possibly with full path) + code flag + quoted argument
+  // Handles multiline quoted strings and both single/double quotes
+  return cmd.replace(
+    /(?:^|\s)(?:[\w.\-\/]*\/)?(\w+)\s+(-[ce]|--eval)\s+("(?:[^"\\]|\\.|\n)*"|'(?:[^'\\]|\\.|\n)*')/g,
+    (fullMatch, binary, flag, _quotedCode) => {
+      const binLower = binary.toLowerCase();
+      const flags = INTERPRETER_CODE_FLAGS[binLower];
+      if (flags && flags.has(flag)) {
+        // Replace the code content with empty quotes, preserving the structure
+        const quoteChar = _quotedCode[0];
+        return fullMatch.replace(_quotedCode, `${quoteChar}${quoteChar}`);
+      }
+      return fullMatch;
+    },
+  );
+}
+
 function extractPathsFromCommand(cmd: string): string[] {
   const paths: string[] = [];
   let match: RegExpExecArray | null;
 
+  // Strip interpreter code arguments first to avoid false positives
+  const stripped = stripInterpreterCode(cmd);
+
   // Split into tokens to handle content-flag skipping
-  const tokens = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+  const tokens = stripped.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
   const skipIndices = new Set<number>();
   for (let i = 0; i < tokens.length; i++) {
     const bare = tokens[i].replace(/^["']|["']$/g, "");
