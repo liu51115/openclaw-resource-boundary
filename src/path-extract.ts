@@ -2,29 +2,62 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 
+// Git ref patterns that look like paths but aren't
+const GIT_REF_PREFIXES = ["upstream/", "origin/", "remotes/", "refs/", "HEAD"];
+const GIT_RANGE_RE = /\.\.\./; // ref1..ref2 or ref1...ref2
+
+// Flags whose values are content, not file paths
+const CONTENT_FLAGS = new Set([
+  "--message", "-m", "--text", "--body", "--subject",
+  "--description", "--title", "--label", "--name",
+]);
+
+function isGitRef(token: string): boolean {
+  if (GIT_RANGE_RE.test(token)) return true;
+  if (token === "HEAD" || token.startsWith("HEAD~") || token.startsWith("HEAD^")) return true;
+  for (const prefix of GIT_REF_PREFIXES) {
+    if (token.startsWith(prefix)) return true;
+  }
+  return false;
+}
+
 function extractPathsFromCommand(cmd: string): string[] {
   const paths: string[] = [];
   let match: RegExpExecArray | null;
 
+  // Split into tokens to handle content-flag skipping
+  const tokens = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) ?? [];
+  const skipIndices = new Set<number>();
+  for (let i = 0; i < tokens.length; i++) {
+    const bare = tokens[i].replace(/^["']|["']$/g, "");
+    if (CONTENT_FLAGS.has(bare) && i + 1 < tokens.length) {
+      skipIndices.add(i + 1);
+    }
+  }
+
+  // Rebuild command without content-flag values for path extraction
+  const filtered = tokens.filter((_, i) => !skipIndices.has(i)).join(" ");
+
   // Match absolute paths: /foo/bar/baz
   const absPathRegex = /(?:^|\s)(\/[\w.\-\/]+)/g;
-  while ((match = absPathRegex.exec(cmd)) !== null) {
+  while ((match = absPathRegex.exec(filtered)) !== null) {
     paths.push(match[1]);
   }
 
   // Match ~ paths: ~/foo/bar
   const tildeRegex = /(?:^|\s)(~\/[\w.\-\/]+)/g;
-  while ((match = tildeRegex.exec(cmd)) !== null) {
+  while ((match = tildeRegex.exec(filtered)) !== null) {
     paths.push(match[1].replace("~", os.homedir()));
   }
 
   // Match relative paths with directory separators (heuristic)
-  // Skip: flags like --foo, bare words, URLs
+  // Skip: flags like --foo, bare words, URLs, git refs
   const relPathRegex = /(?:^|\s)((?:\.\.\/?|\.\/)?[\w.\-]+\/[\w.\-\/]+)/g;
-  while ((match = relPathRegex.exec(cmd)) !== null) {
-    if (!match[1].startsWith("http") && !match[1].startsWith("--")) {
-      paths.push(path.resolve(match[1]));
-    }
+  while ((match = relPathRegex.exec(filtered)) !== null) {
+    const candidate = match[1];
+    if (candidate.startsWith("http") || candidate.startsWith("--")) continue;
+    if (isGitRef(candidate)) continue;
+    paths.push(path.resolve(candidate));
   }
 
   return paths;

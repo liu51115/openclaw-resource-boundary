@@ -5,6 +5,9 @@ import { matchesAny } from "./src/glob-match.js";
 import { checkOneRead } from "./src/one-read.js";
 import type { ResourceBoundaryConfig } from "./src/types.js";
 
+// Default temp directories that should always be allowed for all agents
+const DEFAULT_TEMP_PATHS = ["/tmp/**", "/private/tmp/**"];
+
 export default definePluginEntry({
   id: "resource-boundary",
   name: "Resource Boundary",
@@ -13,6 +16,9 @@ export default definePluginEntry({
 
   register(api) {
     const config = api.pluginConfig as ResourceBoundaryConfig;
+    console.log(
+      `[resource-boundary] REGISTER called, agents: [${Object.keys(config.agents ?? {}).join(", ")}]`,
+    );
 
     api.on(
       "before_tool_call",
@@ -49,8 +55,8 @@ export default definePluginEntry({
         }
 
         for (const resolvedPath of paths) {
-          // 1. Check global always-allow paths (system dirs)
-          if (matchesAny(resolvedPath, config.alwaysAllowPaths ?? [])) continue;
+          // 1. Check global always-allow paths (system dirs + default temp)
+          if (matchesAny(resolvedPath, [...DEFAULT_TEMP_PATHS, ...(config.alwaysAllowPaths ?? [])])) continue;
 
           // 2. Check agent's allowed paths (workspace)
           if (matchesAny(resolvedPath, agentConfig.allowedPaths ?? [])) continue;

@@ -5,6 +5,9 @@ import { checkOneRead, resetReadHistory } from "../src/one-read.js";
 import type { AgentBoundaryConfig, ResourceBoundaryConfig } from "../src/types.js";
 import path from "node:path";
 
+// Must match DEFAULT_TEMP_PATHS in index.ts
+const DEFAULT_TEMP_PATHS = ["/tmp/**", "/private/tmp/**"];
+
 // Simulate the hook logic from index.ts without the OC plugin SDK dependency
 function simulateHook(
   config: ResourceBoundaryConfig,
@@ -36,7 +39,7 @@ function simulateHook(
   }
 
   for (const resolvedPath of paths) {
-    if (matchesAny(resolvedPath, config.alwaysAllowPaths ?? [])) continue;
+    if (matchesAny(resolvedPath, [...DEFAULT_TEMP_PATHS, ...(config.alwaysAllowPaths ?? [])])) continue;
     if (matchesAny(resolvedPath, agentConfig.allowedPaths ?? [])) continue;
 
     if (matchesAny(resolvedPath, agentConfig.oneReadPaths ?? [])) {
@@ -239,6 +242,46 @@ describe("hook integration", () => {
     const result = simulateHook(
       testConfig,
       { toolName: "Web_Search", params: { query: "test" } },
+      { agentId: "brunelleschi" },
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("T9: allows /tmp even when not in alwaysAllowPaths config (Bug 2)", () => {
+    const configNoTmp: ResourceBoundaryConfig = {
+      defaultMode: "allow",
+      alwaysAllowPaths: ["/etc/**", "/usr/**", "/bin/**"], // no /tmp/**
+      agents: {
+        brunelleschi: {
+          mode: "deny-external",
+          allowedPaths: ["/Users/me/.openclaw/workspace-brunelleschi/**"],
+          blockedTools: ["read", "write", "edit", "exec"],
+        },
+      },
+    };
+    const result = simulateHook(
+      configNoTmp,
+      { toolName: "Read", params: { file_path: "/tmp/scratch/notes.txt" } },
+      { agentId: "brunelleschi" },
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("T10: allows /private/tmp even when not in config (Bug 2)", () => {
+    const configNoTmp: ResourceBoundaryConfig = {
+      defaultMode: "allow",
+      alwaysAllowPaths: [],
+      agents: {
+        brunelleschi: {
+          mode: "deny-external",
+          allowedPaths: [],
+          blockedTools: ["read"],
+        },
+      },
+    };
+    const result = simulateHook(
+      configNoTmp,
+      { toolName: "Read", params: { file_path: "/private/tmp/foo.json" } },
       { agentId: "brunelleschi" },
     );
     expect(result).toBeUndefined();
